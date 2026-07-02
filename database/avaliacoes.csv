@@ -1,0 +1,5 @@
+data,id_paciente,tipo,detalhes
+2026-06-23,marcia,Diária Básica,"{'humor': 'Ótimo', 'sono': 'Boa', 'agua_ml': 1000}"
+2026-06-25,marcia,Diária Básica,"{'humor': 'Ótimo', 'sono': 'Boa', 'agua_ml': 500}"
+2026-06-25,marcia,EdUFSCar - Desenho do Relógio,"{'pontuacao': 4, 'resultado': 'Normal'}"
+2026-06-25,marcia,EdUFSCar - Desenho do Relógio,"{'pontuacao': 4, 'resultado': 'Normal'}"

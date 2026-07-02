@@ -1,0 +1,6 @@
+# Query: 
+# ContextLines: 1
+
+pandas
+fpdf
+streamlit-drawable-canvas
