@@ -1,26 +1,28 @@
 import streamlit as st
 import sqlite3
-import datetime
 import ast
+import datetime
+from streamlit_drawable_canvas import st_canvas
 
-# 1. Função de utilidade para salvar
+
 def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
     try:
         if isinstance(detalhes, str):
             dict_detalhes = ast.literal_eval(detalhes)
         else:
             dict_detalhes = detalhes
-
         if "obs_clinica_atual" in st.session_state:
-            dict_detalhes["observacao"] = st.session_state.get("obs_clinica_atual", "").strip()
+            dict_detalhes["observacao"] = st.session_state.get(
+                "obs_clinica_atual", ""
+            ).strip()
 
         detalhes_finais = str(dict_detalhes)
         conn = sqlite3.connect("gerontodata.db")
         cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO avaliacoes (id_paciente, id_profissional, tipo, data, detalhes) 
-            VALUES (?, ?, ?, date('now'), ?)
-        """, (id_paciente, id_profissional, tipo_teste, detalhes_finais))
+        cursor.execute(
+            "INSERT INTO avaliacoes (id_paciente, id_profissional, tipo, data, detalhes) VALUES (?, ?, ?, date('now'), ?)",
+            (id_paciente, id_profissional, tipo_teste, detalhes_finais),
+        )
         conn.commit()
         conn.close()
         return True
@@ -28,7 +30,7 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
         st.error(f"Erro ao salvar: {e}")
         return False
 
-# 2. Função de cálculo da DUREL
+
 def calcular_durel(p1, p2, p3, p4, p5):
     ro = p1
     rno = p2
@@ -36,10 +38,11 @@ def calcular_durel(p1, p2, p3, p4, p5):
     analise = f"RO: {ro}/6 | RNO: {rno}/6 | RI: {ri}/15"
     return {"ro": ro, "rno": rno, "ri": ri, "analise": analise}
 
+
 def renderizar_escala_durel(paciente_id):
     st.markdown("### 📑 Escala de Religiosidade de Duke (DUREL)")
     st.write("Avaliação do envolvimento religioso e espiritualidade.")
-    
+
     with st.form("form_durel"):
         st.markdown("**1. Religiosidade Organizacional (RO)**")
         p1 = st.selectbox(
@@ -50,11 +53,11 @@ def renderizar_escala_durel(paciente_id):
                 (4, "Algumas vezes/mês"),
                 (3, "Algumas vezes/ano"),
                 (2, "Uma vez/ano ou menos"),
-                (1, "Nunca")
+                (1, "Nunca"),
             ],
-            format_func=lambda x: x[1]
+            format_func=lambda x: x[1],
         )[0]
-        
+
         st.markdown("**2. Religiosidade Não-Organizacional (RNO)**")
         p2 = st.selectbox(
             "Atividades religiosas privadas (preces/meditação):",
@@ -64,31 +67,66 @@ def renderizar_escala_durel(paciente_id):
                 (4, "2+ vezes/semana"),
                 (3, "Uma vez/semana"),
                 (2, "Poucas vezes/mês"),
-                (1, "Raramente ou nunca")
+                (1, "Raramente ou nunca"),
             ],
-            format_func=lambda x: x[1]
+            format_func=lambda x: x[1],
         )[0]
-        
+
         st.markdown("**3. Religiosidade Intrínseca (RI)**")
-        p3 = st.selectbox("Sinto presença do Divino:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
-        p4 = st.selectbox("Crenças moldam a vida:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
-        p5 = st.selectbox("Esforço para viver religião:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
-        
+        p3 = st.selectbox(
+            "Sinto presença do Divino:",
+            [
+                (5, "Totalmente de acordo"),
+                (4, "Na maioria"),
+                (3, "Não tenho certeza"),
+                (2, "Grande parte discordo"),
+                (1, "Totalmente discordo"),
+            ],
+        )[0]
+        p4 = st.selectbox(
+            "Crenças moldam a vida:",
+            [
+                (5, "Totalmente de acordo"),
+                (4, "Na maioria"),
+                (3, "Não tenho certeza"),
+                (2, "Grande parte discordo"),
+                (1, "Totalmente discordo"),
+            ],
+        )[0]
+        p5 = st.selectbox(
+            "Esforço para viver religião:",
+            [
+                (5, "Totalmente de acordo"),
+                (4, "Na maioria"),
+                (3, "Não tenho certeza"),
+                (2, "Grande parte discordo"),
+                (1, "Totalmente discordo"),
+            ],
+        )[0]
+
         botao = st.form_submit_button("Salvar")
-        
+
         if botao:
             ri = p3 + p4 + p5
             resultado = f"DUREL - RO: {p1}/6 | RNO: {p2}/6 | RI: {ri}/15"
             try:
                 conn = sqlite3.connect("gerontodata.db")
                 cur = conn.cursor()
-                cur.execute("INSERT INTO historico_escalas (paciente_id, escala_nome, resultado, data) VALUES (?, ?, ?, ?)", 
-                            (paciente_id, "DUREL", resultado, datetime.datetime.now().strftime("%d/%m/%Y")))
+                cur.execute(
+                    "INSERT INTO historico_escalas (paciente_id, escala_nome, resultado, data) VALUES (?, ?, ?, ?)",
+                    (
+                        paciente_id,
+                        "DUREL",
+                        resultado,
+                        datetime.datetime.now().strftime("%d/%m/%Y"),
+                    ),
+                )
                 conn.commit()
                 conn.close()
                 st.success("Salvo com sucesso!")
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
+
 
 def mini_mental_local(id_paciente, id_profissional):
     st.markdown("### 🧠 Mini-Exame do Estado Mental (MEEM)")
@@ -510,22 +548,3 @@ def gestao_medicamentos_local(id_paciente, id_profissional):
                 st.rerun()
         else:
             st.error("Preencha o nome do medicamento e a dosagem.")
-            def calcular_durel(p1, p2, p3, p4, p5):
-    """
-    Calcula os escores da Escala de Religiosidade de Duke (DUREL).
-    Retorna um dicionário com as pontuações por dimensão.
-    """
-    # Dimensões da escala
-    ro = p1        # Religiosidade Organizacional (Frequência a cultos/templos)
-    rno = p2       # Religiosidade Não-Organizacional (Orações, meditação, leitura)
-    ri = p3 + p4 + p5  # Religiosidade Intrínseca (Busca interna da vivência religiosa)
-    
-    # Classificação/Análise rápida para o prontuário
-    analise = f"RO: {ro}/6 | RNO: {rno}/6 | RI: {ri}/15"
-    
-    return {
-        "ro": ro,
-        "rno": rno,
-        "ri": ri,
-        "analise": analise
-    }
