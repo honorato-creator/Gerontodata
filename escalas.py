@@ -1,12 +1,10 @@
 import streamlit as st
 import sqlite3
 import datetime
+import ast
 
+# 1. Função de utilidade para salvar
 def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
-    """
-    Esta é a função centralizada que captura as observações da tela
-    e salva no banco.
-    """
     try:
         if isinstance(detalhes, str):
             dict_detalhes = ast.literal_eval(detalhes)
@@ -14,34 +12,29 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
             dict_detalhes = detalhes
 
         if "obs_clinica_atual" in st.session_state:
-            dict_detalhes["observacao"] = st.session_state.get(
-                "obs_clinica_atual", ""
-            ).strip()
-
-        dict_detalhes["selo_desenvolvedor"] = (
-            "K.Honorato - O Hokage da Vila Oculta do Código"
-        )
+            dict_detalhes["observacao"] = st.session_state.get("obs_clinica_atual", "").strip()
 
         detalhes_finais = str(dict_detalhes)
-
         conn = sqlite3.connect("gerontodata.db")
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO avaliacoes (
-                id_paciente, id_profissional, tipo, data, detalhes
-            ) VALUES (?, ?, ?, date('now'), ?)
-            """,
-            (id_paciente, id_profissional, tipo_teste, detalhes_finais),
-        )
-
+        cursor.execute("""
+            INSERT INTO avaliacoes (id_paciente, id_profissional, tipo, data, detalhes) 
+            VALUES (?, ?, ?, date('now'), ?)
+        """, (id_paciente, id_profissional, tipo_teste, detalhes_finais))
         conn.commit()
         conn.close()
         return True
-
     except Exception as e:
-        print(f"Erro ao salvar avaliação: {e}")
+        st.error(f"Erro ao salvar: {e}")
         return False
+
+# 2. Função de cálculo da DUREL
+def calcular_durel(p1, p2, p3, p4, p5):
+    ro = p1
+    rno = p2
+    ri = p3 + p4 + p5
+    analise = f"RO: {ro}/6 | RNO: {rno}/6 | RI: {ri}/15"
+    return {"ro": ro, "rno": rno, "ri": ri, "analise": analise}
 
 def renderizar_escala_durel(paciente_id):
     st.markdown("### 📑 Escala de Religiosidade de Duke (DUREL)")
@@ -96,7 +89,7 @@ def renderizar_escala_durel(paciente_id):
                 st.success("Salvo com sucesso!")
             except Exception as e:
                 st.error(f"Erro ao salvar: {e}")
-                
+
 def mini_mental_local(id_paciente, id_profissional):
     st.markdown("### 🧠 Mini-Exame do Estado Mental (MEEM)")
 
