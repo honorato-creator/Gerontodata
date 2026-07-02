@@ -43,7 +43,60 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
         print(f"Erro ao salvar avaliação: {e}")
         return False
 
-
+def renderizar_escala_durel(paciente_id):
+    st.markdown("### 📑 Escala de Religiosidade de Duke (DUREL)")
+    st.write("Avaliação do envolvimento religioso e espiritualidade.")
+    
+    with st.form("form_durel"):
+        st.markdown("**1. Religiosidade Organizacional (RO)**")
+        p1 = st.selectbox(
+            "Frequência em igreja/templo:",
+            [
+                (6, "Mais de uma vez/semana"),
+                (5, "Uma vez/semana"),
+                (4, "Algumas vezes/mês"),
+                (3, "Algumas vezes/ano"),
+                (2, "Uma vez/ano ou menos"),
+                (1, "Nunca")
+            ],
+            format_func=lambda x: x[1]
+        )[0]
+        
+        st.markdown("**2. Religiosidade Não-Organizacional (RNO)**")
+        p2 = st.selectbox(
+            "Atividades religiosas privadas (preces/meditação):",
+            [
+                (6, "Mais de uma vez/dia"),
+                (5, "Diariamente"),
+                (4, "2+ vezes/semana"),
+                (3, "Uma vez/semana"),
+                (2, "Poucas vezes/mês"),
+                (1, "Raramente ou nunca")
+            ],
+            format_func=lambda x: x[1]
+        )[0]
+        
+        st.markdown("**3. Religiosidade Intrínseca (RI)**")
+        p3 = st.selectbox("Sinto presença do Divino:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
+        p4 = st.selectbox("Crenças moldam a vida:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
+        p5 = st.selectbox("Esforço para viver religião:", [(5, "Totalmente de acordo"), (4, "Na maioria"), (3, "Não tenho certeza"), (2, "Grande parte discordo"), (1, "Totalmente discordo")])[0]
+        
+        botao = st.form_submit_button("Salvar")
+        
+        if botao:
+            ri = p3 + p4 + p5
+            resultado = f"DUREL - RO: {p1}/6 | RNO: {p2}/6 | RI: {ri}/15"
+            try:
+                conn = sqlite3.connect("gerontodata.db")
+                cur = conn.cursor()
+                cur.execute("INSERT INTO historico_escalas (paciente_id, escala_nome, resultado, data) VALUES (?, ?, ?, ?)", 
+                            (paciente_id, "DUREL", resultado, datetime.datetime.now().strftime("%d/%m/%Y")))
+                conn.commit()
+                conn.close()
+                st.success("Salvo com sucesso!")
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
+                
 def mini_mental_local(id_paciente, id_profissional):
     st.markdown("### 🧠 Mini-Exame do Estado Mental (MEEM)")
 
@@ -483,113 +536,3 @@ def gestao_medicamentos_local(id_paciente, id_profissional):
         "ri": ri,
         "analise": analise
     }
-import streamlit as st
-import sqlite3
-import datetime
-
-def renderizar_escala_durel(paciente_id):
-    st.markdown("### 📑 Escala de Religiosidade de Duke (DUREL)")
-    st.write("Avaliação do envolvimento religioso e espiritualidade na abordagem gerontológica integral.")
-    
-    with st.form("form_durel"):
-        st.markdown("**1. Religiosidade Organizacional (RO)**")
-        p1 = st.selectbox(
-            "Com que frequência você frequenta uma igreja, templo ou outras reuniões religiosas?",
-            [
-                (6, "Mais de uma vez por semana"),
-                (5, "Uma vez por semana"),
-                (4, "Algumas vezes por mês"),
-                (3, "Algumas vezes por ano"),
-                (2, "Uma vez por ano ou menos"),
-                (1, "Nunca")
-            ],
-            format_func=lambda x: x[1]
-        )[0]
-        
-        st.markdown("**2. Religiosidade Não-Organizacional (RNO)**")
-        p2 = st.selectbox(
-            "Com que frequência você dedica tempo a atividades religiosas privadas, como preces, rezas, orações, meditação ou leitura de textos religiosos?",
-            [
-                (6, "Mais de uma vez por dia"),
-                (5, "Diariamente"),
-                (4, "Duas ou mais vezes por semana"),
-                (3, "Uma vez por semana"),
-                (2, "Poucas vezes por mês"),
-                (1, "Raramente ou nunca")
-            ],
-            format_func=lambda x: x[1]
-        )[0]
-        
-        st.markdown("**3. Religiosidade Intrínseca (RI)**")
-        p3 = st.selectbox(
-            "Em minha vida, sinto a presença do Divino (ou de Deus / Força Maior):",
-            [
-                (5, "Totalmente de acordo"),
-                (4, "Na maioria das vezes de acordo"),
-                (3, "Não tenho certeza"),
-                (2, "Em grande parte discordo"),
-                (1, "Totalmente em discordo")
-            ],
-            format_func=lambda x: x[1]
-        )[0]
-        
-        p4 = st.selectbox(
-            "Minhas crenças religiosas verdadeiramente moldam toda a minha abordagem em relação à vida:",
-            [
-                (5, "Totalmente de acordo"),
-                (4, "Na maioria das vezes de acordo"),
-                (3, "Não tenho certeza"),
-                (2, "Em grande parte discordo"),
-                (1, "Totalmente em discordo")
-            ],
-            format_func=lambda x: x[1]
-        )[0]
-        
-        p5 = st.selectbox(
-            "Eu me esforço ao máximo para viver a minha religião (or espiritualidade) em todos os aspectos da minha vida:",
-            [
-                (5, "Totalmente de acordo"),
-                (4, "Na maioria das vezes de acordo"),
-                (3, "Não tenho certeza"),
-                (2, "Em grande parte discordo"),
-                (1, "Totalmente em discordo")
-            ],
-            format_func=lambda x: x[1]
-        )[0]
-        
-        botao_calcular = st.form_submit_button("Calcular e Salvar Escala")
-        
-        if botao_calcular:
-            # Cálculo dos escores por dimensão (Devem ser mantidos separados)
-            ro = p1
-            rno = p2
-            ri = p3 + p4 + p5
-            
-            # Mostra o resultado na tela com o estilo Whitebook
-            st.markdown(f"""
-            <div class="medical-card">
-                <h4>📊 Resultado da Avaliação DUREL</h4>
-                <p><b>Religiosidade Organizacional (RO):</b> {ro} / 6</p>
-                <p><b>Religiosidade Não-Organizacional (RNO):</b> {rno} / 6</p>
-                <p><b>Religiosidade Intrínseca (RI):</b> {ri} / 15</p>
-                <small>Nota: Valores mais altos indicam maior envolvimento religioso.</small>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            # Salva direto na tabela de evoluções/escalas do banco
-            try:
-                conn = sqlite3.connect("gerontodata.db")
-                cursor = conn.cursor()
-                data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-                resultado_texto = f"DUREL - RO: {ro}/6 | RNO: {rno}/6 | RI: {ri}/15"
-                
-                # Adapte os campos aqui de acordo com o padrão da sua tabela de avaliações
-                cursor.execute(
-                    "INSERT INTO historico_escalas (paciente_id, escala_nome, resultado, data) VALUES (?, ?, ?, ?)",
-                    (paciente_id, "DUREL", resultado_texto, data_atual)
-                )
-                conn.commit()
-                conn.close()
-                st.success("✅ Escala DUREL salva no prontuário do paciente!")
-            except Exception as e:
-                st.error(f"Erro ao salvar escala no banco: {e}")
