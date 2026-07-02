@@ -160,3 +160,33 @@ def criar_tabela_feedback():
 
 # Executa a criação
 criar_tabela_feedback()
+import sqlite3
+
+
+def inicializar_banco():
+    conn = sqlite3.connect("gerontodata.db")
+    cursor = conn.cursor()
+
+    # Tabela de Clínicas (Tenant)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS clinicas (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nome TEXT NOT NULL,
+        cnpj TEXT UNIQUE
+    )""")
+
+    # Tabela de Usuários com Hierarquia
+    # cargo: 'admin' (dono da clínica) ou 'profissional'
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS usuarios (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clinica_id INTEGER,
+        nome TEXT,
+        email TEXT UNIQUE,
+        senha TEXT,
+        cargo TEXT,
+        FOREIGN KEY(clinica_id) REFERENCES clinicas(id)
+    )""")
+
+    conn.commit()
+    conn.close()
