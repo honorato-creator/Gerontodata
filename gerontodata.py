@@ -876,7 +876,8 @@ if True:
             st.info("Nenhum feedback registrado até o momento.")
     except Exception as e:
         st.error(f"Erro ao carregar painel admin: {e}")
-        def verificar_acesso(nivel_requerido):
+
+ def verificar_acesso(nivel_requerido):
     """
     nivel_requerido: 'admin' ou 'profissional'
     """
