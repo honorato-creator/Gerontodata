@@ -1,8 +1,6 @@
-import sqlite3
-import ast
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
-
+import sqlite3
+import datetime
 
 def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
     """
