@@ -877,15 +877,16 @@ if True:
     except Exception as e:
         st.error(f"Erro ao carregar painel admin: {e}")
 
- def verificar_acesso(nivel_requerido):
+
+def verificar_acesso(nivel_requerido):
     """
     nivel_requerido: 'admin' ou 'profissional'
     """
     if "usuario" not in st.session_state:
         st.error("Faça login primeiro.")
         st.stop()
-    
+
     usuario = st.session_state["usuario"]
-    if nivel_requerido == 'admin' and usuario['cargo'] != 'admin':
+    if nivel_requerido == "admin" and usuario.get("cargo") != "admin":
         st.error("Acesso negado: Apenas administradores podem acessar esta área.")
         st.stop()
