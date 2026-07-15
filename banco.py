@@ -1,7 +1,10 @@
 import sqlite3
 import os
+import hashlib
+import hmac
+import secrets
 
-# --- 🛡️ CONFIGURAÇÃO DE SEGURANÇA ---
+# --- 🛡️ CONFIGURAÇÃO DE SEGURANÇA -----
 DB_PATH = "gerontodata.db"
 
 
@@ -10,15 +13,45 @@ def conectar_banco():
     return sqlite3.connect(DB_PATH, timeout=30)
 
 
+# --- 🔐 SENHAS: hash + salt (nunca gravar senha em texto puro) ---
+def _hash_senha(senha_texto_puro):
+    salt = secrets.token_hex(16)
+    hash_senha = hashlib.sha256((salt + senha_texto_puro).encode("utf-8")).hexdigest()
+    return f"{salt}${hash_senha}"
+
+
+def _verificar_senha(senha_texto_puro, senha_armazenada):
+    # Compatibilidade: se a senha no banco ainda não tem o formato "salt$hash"
+    # (dados antigos gravados em texto puro), compara direto por segurança mínima.
+    if not senha_armazenada or "$" not in senha_armazenada:
+        return hmac.compare_digest(senha_texto_puro, senha_armazenada or "")
+    salt, hash_salvo = senha_armazenada.split("$", 1)
+    hash_calculado = hashlib.sha256((salt + senha_texto_puro).encode("utf-8")).hexdigest()
+    return hmac.compare_digest(hash_calculado, hash_salvo)
+
+
 def criar_tabelas():
     with conectar_banco() as conn:
         cursor = conn.cursor()
+
+        # 1. Tabela de Clínicas (Tenant do SaaS)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS clinicas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                nome TEXT NOT NULL,
+                cnpj TEXT UNIQUE
+            )
+        """)
+
+        # 2. Tabela de Profissionais / Usuários (Com clinica_id e Cargo)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS profissionais (
                 id_profissional INTEGER PRIMARY KEY AUTOINCREMENT,
+                clinica_id INTEGER,
                 nome TEXT NOT NULL,
                 usuario TEXT UNIQUE NOT NULL,
                 senha TEXT NOT NULL,
+                cargo TEXT DEFAULT 'profissional', -- 'admin' ou 'profissional'
                 data_nascimento TEXT,
                 cidade TEXT,
                 telefone TEXT,
@@ -27,13 +60,17 @@ def criar_tabelas():
                 registro_conselho TEXT,
                 codigo_recuperacao TEXT,
                 sessao_ativa TEXT,
-                verificado INTEGER DEFAULT 0
+                verificado INTEGER DEFAULT 0,
+                FOREIGN KEY(clinica_id) REFERENCES clinicas(id)
             )
         """)
+
+        # 3. Tabela de Pacientes
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS pacientes (
                 id_paciente INTEGER PRIMARY KEY AUTOINCREMENT,
                 id_profissional INTEGER,
+                clinica_id INTEGER, -- Segregação SaaS
                 nome TEXT NOT NULL,
                 idade INTEGER,
                 sexo TEXT,
@@ -41,40 +78,189 @@ def criar_tabelas():
                 contato_emergencia TEXT,
                 tratamentos TEXT,
                 evolucao_clinica TEXT DEFAULT '',
+                FOREIGN KEY(id_profissional) REFERENCES profissionais(id_profissional),
+                FOREIGN KEY(clinica_id) REFERENCES clinicas(id)
+            )
+        """)
+
+        # 4. Tabela de Avaliações
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS avaliacoes (
+                id_avaliacao INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_paciente INTEGER,
+                id_profissional INTEGER,
+                tipo TEXT NOT NULL,
+                data TEXT NOT NULL,
+                detalhes TEXT,
+                FOREIGN KEY(id_paciente) REFERENCES pacientes(id_paciente),
                 FOREIGN KEY(id_profissional) REFERENCES profissionais(id_profissional)
             )
         """)
+
+        # 4b. Tabela de Histórico de Escalas (usada pela DUREL em escalas.py)
+        #     Faltava no schema original -> salvar_avaliacao da DUREL quebrava.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historico_escalas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                paciente_id INTEGER,
+                escala_nome TEXT NOT NULL,
+                resultado TEXT,
+                data TEXT NOT NULL,
+                FOREIGN KEY(paciente_id) REFERENCES pacientes(id_paciente)
+            )
+        """)
+
+        # 5. Tabela de Feedbacks
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS feedbacks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT,
+                tipo TEXT,
+                mensagem TEXT,
+                data TEXT
+            )
+        """)
+
+        # 6. Tabela de Configurações de Integração por Clínica
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS integracoes_clinica (
+                clinica_id INTEGER PRIMARY KEY,
+                url_webhook_n8n TEXT,
+                FOREIGN KEY(clinica_id) REFERENCES clinicas(id)
+            )
+        """)
+
         conn.commit()
 
 
-# --- 🔐 FUNÇÕES DE SEGURANÇA ---
-def cadastrar_usuario_completo(
-    nome, email, senha, dt_nasc, cidade, tel, end, profissao, registro
-):
+def deletar_profissional_completo(id_profissional):
     with conectar_banco() as conn:
         cursor = conn.cursor()
-        try:
-            cursor.execute(
-                """
-                INSERT INTO profissionais (nome, usuario, senha, data_nascimento, cidade, telefone, endereco, profissao, registro_conselho)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (nome, email, senha, dt_nasc, cidade, tel, end, profissao, registro),
-            )
-            conn.commit()
-            return True
-        except sqlite3.IntegrityError:
-            return False
+
+        # 1. Deleta as avaliações dos pacientes vinculados ao profissional
+        cursor.execute(
+            """
+            DELETE FROM avaliacoes 
+            WHERE id_profissional = ?
+        """,
+            (id_profissional,),
+        )
+
+        # 2. Deleta os pacientes do profissional
+        cursor.execute(
+            """
+            DELETE FROM pacientes 
+            WHERE id_profissional = ?
+        """,
+            (id_profissional,),
+        )
+
+        # 3. Deleta o profissional
+        cursor.execute(
+            """
+            DELETE FROM profissionais 
+            WHERE id_profissional = ?
+        """,
+            (id_profissional,),
+        )
+
+        conn.commit()
+        return True
 
 
+# gerontodata.py chama "banco.deletar_profissional" (sem o sufixo "_completo").
+# Mantendo os dois nomes para não quebrar nada que já dependa do original.
+def deletar_profissional(id_profissional):
+    return deletar_profissional_completo(id_profissional)
+
+
+# --- 🔑 LOGIN ---
 def verificar_login(usuario, senha):
+    """
+    Confere usuário/senha na tabela profissionais.
+    Retorna (id_profissional, nome, usuario) se as credenciais forem válidas,
+    ou None caso contrário.
+    """
     with conectar_banco() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id_profissional, nome, usuario FROM profissionais WHERE usuario = ? AND senha = ?",
-            (usuario, senha),
+            "SELECT id_profissional, nome, usuario, senha FROM profissionais WHERE usuario = ?",
+            (usuario,),
         )
-        return cursor.fetchone()
+        linha = cursor.fetchone()
+
+    if not linha:
+        return None
+
+    id_profissional, nome, usuario_db, senha_hash = linha
+
+    if not _verificar_senha(senha, senha_hash):
+        return None
+
+    return (id_profissional, nome, usuario_db)
+
+
+# --- 📝 CADASTRO DE PROFISSIONAL ---
+def cadastrar_usuario_completo(
+    nome,
+    email,
+    senha,
+    data_nascimento,
+    cidade,
+    telefone,
+    endereco,
+    profissao,
+    registro_conselho,
+    clinica_id=None,
+):
+    """
+    Cadastra um novo profissional com senha protegida por hash.
+    Retorna True em sucesso, False se o e-mail (usuario) já existir.
+    """
+    senha_hash = _hash_senha(senha)
+    try:
+        with conectar_banco() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO profissionais
+                    (clinica_id, nome, usuario, senha, cargo, data_nascimento,
+                     cidade, telefone, endereco, profissao, registro_conselho, verificado)
+                VALUES (?, ?, ?, ?, 'profissional', ?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    clinica_id,
+                    nome,
+                    email,
+                    senha_hash,
+                    data_nascimento,
+                    cidade,
+                    telefone,
+                    endereco,
+                    profissao,
+                    registro_conselho,
+                ),
+            )
+            conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        # UNIQUE(usuario) violado -> e-mail já cadastrado
+        return False
+
+
+# --- 👤 PACIENTES ---
+def cadastrar_paciente(nome, idade, sexo, clinica_id=None, id_profissional=None):
+    with conectar_banco() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO pacientes (id_profissional, clinica_id, nome, idade, sexo)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (id_profissional, clinica_id, nome, idade, sexo),
+        )
+        conn.commit()
+        return cursor.lastrowid
 
 
 def salvar_evolucao_paciente(id_paciente, texto_evolucao):
@@ -88,105 +274,34 @@ def salvar_evolucao_paciente(id_paciente, texto_evolucao):
         return True
 
 
-# AGORA CORRETA: Identação alinhada com as outras funções
-def buscar_evolucao(id_paciente):
-    """Busca apenas o texto da evolução de um paciente específico."""
-    with conectar_banco() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT evolucao_clinica FROM pacientes WHERE id_paciente = ?",
-            (id_paciente,),
-        )
-        resultado = cursor.fetchone()
-        return resultado[0] if resultado else ""
-
-
-def salvar_paciente(id_profissional, nome):
-    """Salva um novo paciente básico."""
-    with conectar_banco() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO pacientes (id_profissional, nome) VALUES (?, ?)",
-            (id_profissional, nome),
-        )
-        conn.commit()
-
-
-def deletar_profissional(id_profissional):
-    """Remove um profissional e todos os dados vinculados a ele."""
-    with conectar_banco() as conn:
-        cursor = conn.cursor()
-
-        # 1. Pega todos os IDs de pacientes deste profissional
-        cursor.execute(
-            "SELECT id_paciente FROM pacientes WHERE id_profissional = ?",
-            (id_profissional,),
-        )
-        pacientes = cursor.fetchall()
-
-        # 2. Deleta avaliações dos pacientes dele
-        for p in pacientes:
-            cursor.execute("DELETE FROM avaliacoes WHERE id_paciente = ?", (p[0],))
-
-        # 3. Deleta os pacientes dele
-        cursor.execute(
-            "DELETE FROM pacientes WHERE id_profissional = ?", (id_profissional,)
-        )
-
-        # 4. Deleta o profissional
-        cursor.execute(
-            "DELETE FROM profissionais WHERE id_profissional = ?", (id_profissional,)
-        )
-
-        conn.commit()
+# --- 📋 AVALIAÇÕES (usada por salvar_avaliacao_com_webhook em gerontodata.py) ---
+def salvar_avaliacao(
+    paciente_id, profissional_id, clinica_id, tipo_escala, pontuacao, interpretacao, respostas
+):
+    """
+    Também estava faltando: gerontodata.py chama banco.salvar_avaliacao com essa
+    assinatura (diferente da salvar_avaliacao que já existe em escalas.py).
+    """
+    try:
+        detalhes = {
+            "pontuacao": pontuacao,
+            "resultado": interpretacao,
+            "respostas": respostas,
+        }
+        with conectar_banco() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO avaliacoes (id_paciente, id_profissional, tipo, data, detalhes)
+                VALUES (?, ?, ?, date('now'), ?)
+                """,
+                (paciente_id, profissional_id, tipo_escala, str(detalhes)),
+            )
+            conn.commit()
         return True
+    except Exception:
+        return False
 
 
-def criar_tabela_feedback():
-    conn = sqlite3.connect("gerontodata.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS feedbacks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT,
-            tipo TEXT,
-            mensagem TEXT,
-            data TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-
-# Executa a criação
-criar_tabela_feedback()
-import sqlite3
-
-
-def inicializar_banco():
-    conn = sqlite3.connect("gerontodata.db")
-    cursor = conn.cursor()
-
-    # Tabela de Clínicas (Tenant)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS clinicas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nome TEXT NOT NULL,
-        cnpj TEXT UNIQUE
-    )""")
-
-    # Tabela de Usuários com Hierarquia
-    # cargo: 'admin' (dono da clínica) ou 'profissional'
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        clinica_id INTEGER,
-        nome TEXT,
-        email TEXT UNIQUE,
-        senha TEXT,
-        cargo TEXT,
-        FOREIGN KEY(clinica_id) REFERENCES clinicas(id)
-    )""")
-
-    conn.commit()
-    conn.close()
+# Executa as migrações na inicialização do script
+criar_tabelas()

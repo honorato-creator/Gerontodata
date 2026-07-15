@@ -2,21 +2,79 @@ import streamlit as st
 import sqlite3
 import ast
 import datetime
+import requests  # Certifique-se de que importou o requests aqui!
 from streamlit_drawable_canvas import st_canvas
+
+
+def disparar_webhook_n8n(tipo_teste, detalhes, id_paciente, id_profissional):
+    """
+    Busca a URL de webhook ativa para a clínica do profissional e dispara a automação.
+    """
+    try:
+        conn = sqlite3.connect("gerontodata.db")
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT clinica_id FROM profissionais WHERE id_profissional = ?",
+            (id_profissional,),
+        )
+        res_prof = cursor.fetchone()
+
+        if not res_prof or not res_prof[0]:
+            conn.close()
+            return False
+
+        clinica_id = res_prof[0]
+
+        cursor.execute(
+            "SELECT url_webhook_n8n FROM integracoes_clinica WHERE clinica_id = ?",
+            (clinica_id,),
+        )
+        res_url = cursor.fetchone()
+        conn.close()
+
+        if not res_url or not res_url[0]:
+            return False
+
+        n8n_url = res_url[0]
+
+        payload = {
+            "id_paciente": id_paciente,
+            "id_profissional": id_profissional,
+            "clinica_id": clinica_id,
+            "tipo_teste": tipo_teste,
+            "detalhes": detalhes,
+        }
+
+        resposta = requests.post(n8n_url, json=payload, timeout=3)
+        return resposta.status_code == 200
+
+    except Exception as e:
+        print(f"⚠️ Erro silencioso ao disparar webhook para o n8n: {e}")
+        return False
 
 
 def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
     try:
         if isinstance(detalhes, str):
-            dict_detalhes = ast.literal_eval(detalhes)
+            try:
+                dict_detalhes = ast.literal_eval(detalhes)
+            except Exception:
+                dict_detalhes = {"dados_brutos": detalhes}
         else:
-            dict_detalhes = detalhes
+            dict_detalhes = detalhes if detalhes is not None else {}
+
         if "obs_clinica_atual" in st.session_state:
             dict_detalhes["observacao"] = st.session_state.get(
                 "obs_clinica_atual", ""
             ).strip()
 
+        # Selo do Hokage
+        dict_detalhes["selo_desenvolvedor"] = (
+            "K.Honorato - O Hokage da Vila Oculta do Código"
+        )
         detalhes_finais = str(dict_detalhes)
+
         conn = sqlite3.connect("gerontodata.db")
         cursor = conn.cursor()
         cursor.execute(
@@ -25,6 +83,10 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
         )
         conn.commit()
         conn.close()
+
+        # Dispara a automação buscando a URL do banco
+        disparar_webhook_n8n(tipo_teste, dict_detalhes, id_paciente, id_profissional)
+
         return True
     except Exception as e:
         st.error(f"Erro ao salvar: {e}")

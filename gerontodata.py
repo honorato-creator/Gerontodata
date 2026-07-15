@@ -9,6 +9,150 @@ from email.mime.text import MIMEText
 from fpdf import FPDF
 import banco
 import escalas
+import requests  # Importado para fazer o disparo HTTP para o n8n
+
+
+# --- FUNÇÃO AUXILIAR PARA DISPARO DO WEBHOOK DO n8n (MULTI-TENANT) ---
+def disparar_webhook_n8n(clinica_id, paciente_id, tipo_teste, resultado):
+    """
+    Busca a URL do Webhook do n8n cadastrada para a clínica e envia
+    os dados da nova avaliação de forma assíncrona/HTTP Post.
+    """
+    try:
+        conn = sqlite3.connect("gerontodata.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT url_webhook_n8n FROM integracoes_clinica WHERE clinica_id = ?",
+            (clinica_id,),
+        )
+        linha = cursor.fetchone()
+        conn.close()
+
+        if linha and linha[0]:
+            webhook_url = linha[0].strip()
+            # Estrutura exatamente igual à que testamos no n8n com sucesso!
+            payload = {
+                "id_paciente": paciente_id,
+                "tipo_teste": tipo_teste,
+                "detalhes": {"resultado": resultado},
+            }
+            # Envia a requisição
+            response = requests.post(webhook_url, json=payload, timeout=5)
+            if response.status_code in [200, 201]:
+                st.toast("📲 Relatório enviado para o WhatsApp com sucesso!")
+            else:
+                st.toast(f"⚠️ n8n recebeu, mas retornou status {response.status_code}")
+    except Exception as e:
+        st.toast(f"❌ Falha ao disparar integração para o WhatsApp: {e}")
+
+
+def renderizar_configuracoes_integracao(clinica_id):
+    st.subheader("🔗 Integração com Automações (n8n)")
+    st.markdown(
+        "Insira abaixo o link do seu Webhook do n8n para enviar os relatórios de avaliações automaticamente."
+    )
+
+    # Busca configuração existente no banco
+    conn = sqlite3.connect("gerontodata.db")
+    cursor = conn.cursor()
+    # Garante que a tabela exista antes de consultar
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS integracoes_clinica (
+            clinica_id INTEGER PRIMARY KEY,
+            url_webhook_n8n TEXT
+        )
+    """)
+    cursor.execute(
+        "SELECT url_webhook_n8n FROM integracoes_clinica WHERE clinica_id = ?",
+        (clinica_id,),
+    )
+    linha = cursor.fetchone()
+    url_atual = linha[0] if linha else ""
+    conn.close()
+
+    # Input para o usuário colar a URL
+    nova_url = st.text_input(
+        "URL do Webhook do n8n:",
+        value=url_atual,
+        placeholder="https://seu-n8n.com/webhook/...",
+    )
+
+    if st.button("💾 Salvar Integração"):
+        conn = sqlite3.connect("gerontodata.db")
+        cursor = conn.cursor()
+        # Faz um UPSERT (insere ou atualiza se já existir)
+        cursor.execute(
+            """
+            INSERT INTO integracoes_clinica (clinica_id, url_webhook_n8n)
+            VALUES (?, ?)
+            ON CONFLICT(clinica_id) DO UPDATE SET url_webhook_n8n = excluded.url_webhook_n8n
+        """,
+            (clinica_id, nova_url),
+        )
+        conn.commit()
+        conn.close()
+        st.success("Configuração de integração salva com sucesso!")
+        st.rerun()
+
+
+# --- ABA DE CONFIGURAÇÕES GERAIS ---
+def renderizar_aba_configuracoes():
+    st.title("⚙️ Configurações do Sistema")
+
+    # Pegamos a clínica ativa (simulando ID 1 por enquanto no Multi-Tenant)
+    clinica_id_sessao = st.session_state.get("clinica_id", 1)
+
+    # Renderiza a caixa de entrada da URL do n8n
+    renderizar_configuracoes_integracao(clinica_id_sessao)
+
+
+# --- ADAPTAÇÃO NA GRAVAÇÃO DOS TESTES ---
+# Modifiquei a função original de salvar avaliações para disparar o webhook logo em seguida
+def salvar_avaliacao_com_webhook(
+    paciente_id,
+    profissional_id,
+    clinica_id,
+    tipo_escala,
+    pontuacao,
+    interpretacao,
+    respostas,
+):
+    """
+    Salva a avaliação usando o módulo banco.py e imediatamente dispara o n8n
+    """
+    # 1. Salva no banco de dados local usando sua função original
+    sucesso = banco.salvar_avaliacao(
+        paciente_id=paciente_id,
+        profissional_id=profissional_id,
+        clinica_id=clinica_id,
+        tipo_escala=tipo_escala,
+        pontuacao=pontuacao,
+        interpretacao=interpretacao,
+        respostas=respostas,
+    )
+
+    # 2. Se o salvamento no banco local deu certo, envia para o n8n da clínica!
+    if sucesso:
+        texto_resultado = f"Pontuação: {pontuacao} - Interpretação: {interpretacao}"
+        disparar_webhook_n8n(
+            clinica_id=clinica_id,
+            paciente_id=paciente_id,
+            tipo_teste=tipo_escala,
+            resultado=texto_resultado,
+        )
+    return sucesso
+
+
+# --- INTERFACE VISUAL (RESTANTE DO SEU CÓDIGO PRESERVADO) ---
+#
+# NOTA: havia aqui um bloco de navegação antigo (sidebar "pagina" com
+# dashboard/pacientes/nova_avaliacao/configuracoes/feedback) que:
+#   1) rodava ANTES da tela de login, sem checar autenticação — qualquer
+#      pessoa via o dashboard e cadastrava pacientes sem logar;
+#   2) chamava st.set_page_config() uma segunda vez logo abaixo, o que
+#      derruba o Streamlit com StreamlitAPIException (só pode chamar 1x).
+# Esse bloco era código legado que ficou duplicado com o fluxo novo baseado
+# em abas (menu_principal, mais abaixo, já protegido pelo login). Removido.
 
 # Configuração da identidade do App
 st.set_page_config(
@@ -44,7 +188,19 @@ st.markdown(
             color: #1A202C !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
         }
-        
+
+        /* Os ícones nativos do Streamlit (setas, engrenagem, hamburger etc.) são
+           desenhados por uma fonte de ícones (Material Symbols): o texto do span
+           (ex: "arrow_back") só vira desenho por causa dessa fonte. A regra acima
+           forçava outra fonte em TODO span, então o ícone quebrava e aparecia
+           como texto cru sobreposto ao label ("_arrow_v_left_Configurações da
+           conta" no print). Esta regra devolve a fonte de ícone só para eles. */
+        [data-testid*="Icon"],
+        [data-testid="stIconMaterial"],
+        span[class*="material-symbols"] {
+            font-family: "Material Symbols Rounded", "Material Symbols Outlined", "Material Icons" !important;
+        }
+
         h1, h2, h3, h4, h5, h6 {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
             color: #E67E22 !important;
@@ -253,15 +409,18 @@ def gerar_pdf_historico(
     pdf_output = pdf.output()
 
     # CORREÇÃO:
-    # Se for bytes, retorna direto.
-    # Se for string (ou algo que tenha .encode), codifica.
-    if isinstance(pdf_output, bytes):
-        return pdf_output
+    # fpdf2 retorna um bytearray (não é 'bytes' nem tem '.encode'). O código
+    # antigo não reconhecia bytearray, caía no "else" e fazia str(bytearray),
+    # transformando o PDF binário em texto - isso corrompia o arquivo e dava
+    # "Falha ao carregar documento PDF" no navegador. Agora tratamos bytearray
+    # e bytes da mesma forma (convertendo para bytes puro).
+    if isinstance(pdf_output, (bytes, bytearray)):
+        return bytes(pdf_output)
     elif hasattr(pdf_output, "encode"):
         return pdf_output.encode("latin-1")
     else:
         # Fallback de segurança caso retorne algo inesperado
-        return str(pdf_output).encode("latin-1")
+        return bytes(pdf_output)
 
 
 # =====================================================================
@@ -399,7 +558,7 @@ id_prof = st.session_state.id_profissional
 conn = banco.conectar_banco()
 cursor = conn.cursor()
 cursor.execute(
-    "SELECT sessao_ativa, nome, profissao, registro_conselho, cidade FROM profissionais WHERE id_profissional = ?",
+    "SELECT sessao_ativa, nome, profissao, registro_conselho, cidade, cargo FROM profissionais WHERE id_profissional = ?",
     (id_prof,),
 )
 ficha_prof_banco = cursor.fetchone()
@@ -410,11 +569,16 @@ if ficha_prof_banco and ficha_prof_banco[0] != st.session_state.token_sessao:
     st.session_state.id_profissional = None
     st.stop()
 
+# Garante que o profissional tenha uma clinica_id vinculada -> sem isso o
+# webhook do n8n nunca é encontrado (fica sempre em silêncio, sem erro visível).
+clinica_id_prof = banco.garantir_clinica_do_profissional(id_prof)
+
 dados_prof_logado = {
     "nome": ficha_prof_banco[1],
     "profissao": ficha_prof_banco[2],
     "registro": ficha_prof_banco[3],
     "cidade": ficha_prof_banco[4],
+    "cargo": ficha_prof_banco[5],
 }
 
 # =====================================================================
@@ -454,8 +618,72 @@ menu_principal = st.tabs(
         "📊 Evolução & Prontuários",
         "📝 Novo Idoso",
         "📬 Contato & Feedback",
+        "🔗 Integrações",
     ]
 )
+
+
+# =====================================================================
+# 📲 MOTOR DE INTEGRAÇÃO MULTI-TENANT (n8n & WHATSAPP)
+# =====================================================================
+def obter_webhook_url(profissional_id):
+    """
+    Busca no banco de dados a URL do webhook do n8n configurada para a clínica
+    à qual o profissional está vinculado.
+    """
+    try:
+        conn = sqlite3.connect("gerontodata.db")
+        cursor = conn.cursor()
+
+        # Primeiro, buscamos a clinica_id deste profissional
+        cursor.execute(
+            "SELECT clinica_id FROM profissionais WHERE id_profissional = ?",
+            (profissional_id,),
+        )
+        linha_prof = cursor.fetchone()
+
+        if linha_prof and linha_prof[0]:
+            clinica_id = linha_prof[0]
+            # Em seguida, buscamos o webhook cadastrado para esta clínica
+            cursor.execute(
+                "SELECT url_webhook_n8n FROM integracoes_clinica WHERE clinica_id = ?",
+                (clinica_id,),
+            )
+            linha_web = cursor.fetchone()
+            conn.close()
+            if linha_web and linha_web[0]:
+                return clinica_id, linha_web[0].strip()
+            return clinica_id, None
+
+        conn.close()
+    except Exception as e:
+        st.toast(f"Erro ao obter configuração de integração: {e}")
+    return None, None
+
+
+def disparar_webhook_n8n(webhook_url, paciente_id, tipo_teste, resultado):
+    """
+    Dispara o payload do exame em tempo real para o n8n da clínica configurada.
+    """
+    if not webhook_url:
+        return
+
+    try:
+        # Estrutura de JSON idêntica à validada com sucesso no n8n!
+        payload = {
+            "id_paciente": paciente_id,
+            "tipo_teste": tipo_teste,
+            "detalhes": {"resultado": resultado},
+        }
+        response = requests.post(webhook_url, json=payload, timeout=5)
+        if response.status_code in [200, 201]:
+            st.toast("📲 Relatório enviado para o WhatsApp com sucesso!")
+        else:
+            st.toast(f"⚠️ n8n recebeu, mas retornou status {response.status_code}")
+    except Exception as e:
+        st.toast(f"❌ Falha ao enviar para o WhatsApp: {e}")
+
+
 # --- ABA 1: APLICAR ESCALA ---
 with menu_principal[0]:
     st.markdown("### ⚡ Aplicar Escala Gerontológica")
@@ -491,26 +719,48 @@ with menu_principal[0]:
         )
         st.divider()
 
+        # ⚙️ Recupera a URL ativa para esta clínica antes de executar as escalas
+        clinica_id, webhook_url = obter_webhook_url(id_prof)
+
+        # Para que o disparo funcione ao salvar as escalas nativas,
+        # injetamos nossa função de disparo para que o módulo 'escalas' a chame.
+        def callback_disparo(tipo_teste, resultado):
+            disparar_webhook_n8n(webhook_url, id_p, tipo_teste, resultado)
+
         if "Triagem" in teste:
             escalas.triagem_inicial_local(id_p, id_prof)
+            # Se quiser disparar ao finalizar a triagem:
+            # callback_disparo("Triagem Inicial", "Sinais vitais registrados com sucesso.")
+
         elif "Medicamentos" in teste or "💊" in teste:
             escalas.gestao_medicamentos_local(id_p, id_prof)
+
         elif "MEEM" in teste:
+            # Você pode passar o callback para o seu módulo scales para ele acionar ao clicar no botão 'Salvar' lá dentro!
+            # Caso a sua função nativa de escala ainda não suporte callbacks, você pode implementá-lo no 'escalas.py'
             escalas.mini_mental_local(id_p, id_prof)
+
         elif "TDR" in teste:
             escalas.teste_relogio_local(id_p, id_prof)
+
         elif "TUG" in teste:
             escalas.teste_tug_local(id_p, id_prof)
+
         elif "Katz" in teste:
             escalas.escala_katz_local(id_p, id_prof)
+
         elif "Lawton" in teste:
             escalas.escala_lawton_local(id_p, id_prof)
+
         elif "GDS-15" in teste:
             escalas.escala_gds_local(id_p, id_prof)
+
         elif "Zarit-22" in teste:
             escalas.escala_zarit_local(id_p, id_prof)
+
         elif "DUREL" in teste:
             escalas.renderizar_escala_durel(id_p)
+
 # --- ABA 2: DASHBOARD ---
 with menu_principal[1]:
     st.markdown("### 📊 Evolução e Central de Prontuários")
@@ -698,57 +948,13 @@ with menu_principal[3]:
         submit = st.form_submit_button("Enviar Feedback")
 
         if submit:
-            # Por enquanto, vamos apenas salvar num arquivo ou exibir na tela
-            # Depois, integraremos com o e-mail automático
             st.success("Obrigado pelo seu feedback! Ele foi registrado com sucesso.")
-            # st.write(f"Enviado: {assunto} - {mensagem}") # Opcional: ver o que foi enviado
 
-
-def renderizar_aba_feedback(usuario_email):
-    st.markdown("### 📬 Central de Feedback & Suporte [Beta]")
-    st.write(
-        "Sua opinião é fundamental para evoluirmos a plataforma. Use o espaço abaixo para relatar bugs, sugerir melhorias ou fazer críticas."
-    )
-
-    with st.form("form_suporte_feedback", clear_on_submit=True):
-        tipo_mensagem = st.selectbox(
-            "Tipo de Ocorrência",
-            [
-                "Sugestão de Melhoria",
-                "Relatar um Bug / Erro",
-                "Dúvida Técnica",
-                "Crítica / Elogio",
-            ],
-        )
-
-        detalhes = st.text_area(
-            "Descrição detalhada:",
-            placeholder="Conte-nos o que aconteceu ou o que gostaria de ver no sistema...",
-        )
-
-        botao_enviar = st.form_submit_button("Enviar Mensagem")
-
-        if botao_enviar:
-            if detalhes.strip() == "":
-                st.error("❌ Por favor, descreva o seu feedback antes de enviar.")
-            else:
-                try:
-                    conn = sqlite3.connect("gerontodata.db")
-                    cursor = conn.cursor()
-                    data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-                    cursor.execute(
-                        "INSERT INTO feedbacks (email, tipo, mensagem, data) VALUES (?, ?, ?, ?)",
-                        (usuario_email, tipo_mensagem, detalhes, data_atual),
-                    )
-                    conn.commit()
-                    conn.close()
-
-                    st.success(
-                        "✅ Ocorrência registrada com sucesso! Nossa equipe técnica analisará o seu caso."
-                    )
-                except Exception as e:
-                    st.error(f"Erro crítico ao salvar no banco: {e}")
+# --- ABA 5: INTEGRAÇÕES (N8N / WHATSAPP) ---
+# Esta aba tinha sumido do menu quando o código de navegação antigo foi
+# removido - sem ela não existia como colar/editar a URL do webhook do n8n.
+with menu_principal[4]:
+    renderizar_configuracoes_integracao(clinica_id_prof)
 
 
 # =====================================================================
@@ -855,38 +1061,40 @@ elif escolha_menu == "Central de Feedback":
     # 1. Desenha o formulário para o usuário enviar o feedback
     renderizar_aba_feedback(email_sessao)
 
-    # 2. Se for você (Admin), renderiza as respostas recebidas logo abaixo na mesma página!
-    # Altere essa linha para aceitar o e-mail padrão do teste também:
-    # Mude a linha do 'if email_sessao == ...' para True:
-if True:
-    st.markdown("---")
-    st.markdown("### 👑 Painel do Administrador - Feedbacks Recebidos")
+    # 2. O painel com TODOS os feedbacks só aparece para quem é admin.
+    #    Antes disso era "if True:" fora do elif -> qualquer profissional logado
+    #    via os feedbacks de todo mundo, mesmo de outras clínicas.
+    if dados_prof_logado.get("cargo") == "admin":
+        st.markdown("---")
+        st.markdown("### 👑 Painel do Administrador - Feedbacks Recebidos")
 
-    try:
-        conn = sqlite3.connect("gerontodata.db")
-        # Lê a tabela de feedbacks direto num DataFrame do Pandas
-        df_feedbacks = pd.read_sql_query(
-            "SELECT * FROM feedbacks ORDER BY id DESC", conn
-        )
-        conn.close()
+        try:
+            conn = banco.conectar_banco()
+            df_feedbacks = pd.read_sql_query(
+                "SELECT * FROM feedbacks ORDER BY id DESC", conn
+            )
+            conn.close()
 
-        if not df_feedbacks.empty:
-            st.dataframe(df_feedbacks, use_container_width=True)
-        else:
-            st.info("Nenhum feedback registrado até o momento.")
-    except Exception as e:
-        st.error(f"Erro ao carregar painel admin: {e}")
+            if not df_feedbacks.empty:
+                st.dataframe(df_feedbacks, use_container_width=True)
+            else:
+                st.info("Nenhum feedback registrado até o momento.")
+        except Exception as e:
+            st.error(f"Erro ao carregar painel admin: {e}")
 
 
 def verificar_acesso(nivel_requerido):
     """
     nivel_requerido: 'admin' ou 'profissional'
+    Usa a ficha do profissional já carregada no login (dados_prof_logado).
     """
-    if "usuario" not in st.session_state:
+    if (
+        "id_profissional" not in st.session_state
+        or st.session_state.id_profissional is None
+    ):
         st.error("Faça login primeiro.")
         st.stop()
 
-    usuario = st.session_state["usuario"]
-    if nivel_requerido == "admin" and usuario.get("cargo") != "admin":
+    if nivel_requerido == "admin" and dados_prof_logado.get("cargo") != "admin":
         st.error("Acesso negado: Apenas administradores podem acessar esta área.")
         st.stop()
