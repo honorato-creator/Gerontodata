@@ -7,13 +7,29 @@ import requests  # Certifique-se de que importou o requests aqui!
 from streamlit_drawable_canvas import st_canvas
 
 
-def gerar_link_whatsapp(texto):
+def gerar_link_whatsapp(texto, numero=None):
     """
     Gera um link 'wa.me' que abre o WhatsApp (app ou web) já com a mensagem
     pronta. Diferente do webhook do n8n, isso não exige nenhuma configuração
     externa - funciona pra qualquer profissional, na hora.
+
+    Se 'numero' for informado, abre direto na conversa com esse contato
+    (assume Brasil/+55 se a pessoa não digitou o código do país). Sem
+    número, abre o seletor de contatos do WhatsApp pra escolher na hora.
+
+    Importante: o WhatsApp sempre exige que a pessoa aperte "Enviar" dentro
+    do app - nenhum link consegue mandar a mensagem sozinho, isso é uma
+    trava da própria Meta contra spam (só a API paga do WhatsApp Business
+    contorna isso).
     """
-    return "https://wa.me/?text=" + urllib.parse.quote(texto)
+    texto_codificado = urllib.parse.quote(texto)
+    if numero:
+        numero_limpo = "".join(ch for ch in numero if ch.isdigit())
+        if numero_limpo and not numero_limpo.startswith("55"):
+            numero_limpo = "55" + numero_limpo
+        if numero_limpo:
+            return f"https://wa.me/{numero_limpo}?text={texto_codificado}"
+    return "https://wa.me/?text=" + texto_codificado
 
 
 def disparar_webhook_n8n(tipo_teste, detalhes, id_paciente, id_profissional):
@@ -96,14 +112,31 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
 
         # Compartilhamento simples via WhatsApp - não exige nenhuma
         # configuração, funciona pra qualquer profissional na hora.
+        conn = sqlite3.connect("gerontodata.db")
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
+            (id_paciente,),
+        )
+        linha_paciente = cursor.fetchone()
+        conn.close()
+        numero_destino = (
+            linha_paciente[0] if linha_paciente and linha_paciente[0] else None
+        )
+
         resumo = dict_detalhes.get("resultado", "")
         pontos = dict_detalhes.get("pontuacao", "")
         texto_whats = (
             f"*GerontoData - {tipo_teste}*\nPontuação: {pontos}\nResultado: {resumo}"
         )
+        rotulo_botao = (
+            "📲 Enviar resultado no WhatsApp"
+            if numero_destino
+            else "📲 Compartilhar resultado no WhatsApp (escolher contato)"
+        )
         st.link_button(
-            "📲 Compartilhar resultado no WhatsApp",
-            gerar_link_whatsapp(texto_whats),
+            rotulo_botao,
+            gerar_link_whatsapp(texto_whats, numero_destino),
             use_container_width=True,
         )
 

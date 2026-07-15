@@ -73,8 +73,11 @@ REFERENCIAS_LITERATURA = {
 
 def renderizar_configuracoes_integracao(clinica_id):
     st.success(
-        "📲 O compartilhamento de resultados no WhatsApp já funciona automaticamente "
-        "em cada avaliação salva — não precisa configurar nada aqui pra isso."
+        "📲 O compartilhamento no WhatsApp já funciona automaticamente em cada "
+        "avaliação salva. Pra abrir direto na conversa certa (em vez de escolher "
+        "o contato manualmente toda vez), cadastre o número na ficha do paciente "
+        "- campo 'WhatsApp para receber os resultados', na aba Novo Idoso ou em "
+        "Evolução & Prontuários."
     )
     st.subheader("🔗 Automação avançada com n8n (opcional)")
     st.markdown(
@@ -137,6 +140,55 @@ def renderizar_configuracoes_integracao(clinica_id):
 #      derruba o Streamlit com StreamlitAPIException (só pode chamar 1x).
 # Esse bloco era código legado que ficou duplicado com o fluxo novo baseado
 # em abas (menu_principal, mais abaixo, já protegido pelo login). Removido.
+
+
+def renderizar_aba_feedback(usuario_email):
+    """Desenha a interface visual do formulário de feedback"""
+    st.markdown("### 📬 Central de Feedback & Suporte")
+    st.write(
+        "Sua opinião é fundamental para evoluirmos a plataforma. Use o espaço abaixo para relatar bugs, sugerir melhorias ou fazer críticas."
+    )
+
+    with st.form("form_suporte_feedback", clear_on_submit=True):
+        tipo_mensagem = st.selectbox(
+            "Tipo de Ocorrência",
+            [
+                "Sugestão de Melhoria",
+                "Relatar um Bug / Erro",
+                "Dúvida Técnica",
+                "Crítica / Elogio",
+            ],
+        )
+
+        detalhes = st.text_area(
+            "Descrição detalhada:",
+            placeholder="Conte-nos detalhadamente o que aconteceu ou o que gostaria de ver no sistema...",
+        )
+
+        botao_enviar = st.form_submit_button("Enviar Mensagem")
+
+        if botao_enviar:
+            if detalhes.strip() == "":
+                st.error("❌ Por favor, descreva o seu feedback antes de enviar.")
+            else:
+                try:
+                    conn = sqlite3.connect("gerontodata.db")
+                    cursor = conn.cursor()
+                    data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+
+                    cursor.execute(
+                        "INSERT INTO feedbacks (email, tipo, mensagem, data) VALUES (?, ?, ?, ?)",
+                        (usuario_email, tipo_mensagem, detalhes, data_atual),
+                    )
+                    conn.commit()
+                    conn.close()
+
+                    st.success(
+                        "✅ Ocorrência registrada com sucesso! Nossa equipe técnica analisará o seu caso."
+                    )
+                except Exception as e:
+                    st.error(f"Erro crítico ao salvar no banco: {e}")
+
 
 # Configuração da identidade do App
 st.set_page_config(
@@ -995,7 +1047,7 @@ with menu_principal[1]:
         conn = banco.conectar_banco()
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT endereco, contato_emergencia, tratamentos, evolucao_clinica FROM pacientes WHERE id_paciente = ?",
+            "SELECT endereco, contato_emergencia, tratamentos, evolucao_clinica, whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
             (id_p,),
         )
         dados_banco = cursor.fetchone()
@@ -1003,6 +1055,7 @@ with menu_principal[1]:
 
         dados_paciente = {}
         evolucao_salva = ""
+        whatsapp_salvo = ""
         if dados_banco:
             dados_paciente = {
                 "endereco": dados_banco[0],
@@ -1010,6 +1063,7 @@ with menu_principal[1]:
                 "tratamentos": dados_banco[2],
             }
             evolucao_salva = dados_banco[3] if dados_banco[3] else ""
+            whatsapp_salvo = dados_banco[4] if dados_banco[4] else ""
 
         conn = banco.conectar_banco()
         df_filtrado = pd.read_sql_query(
@@ -1066,6 +1120,26 @@ with menu_principal[1]:
                         st.rerun()
 
             st.divider()
+            st.markdown("#### 📲 WhatsApp para receber os resultados")
+            novo_whatsapp = st.text_input(
+                "Número com DDD (deixe em branco pra escolher o contato manualmente):",
+                value=whatsapp_salvo,
+                placeholder="Ex: 13981221334",
+                key="whatsapp_responsavel_input",
+            )
+            if st.button("💾 Salvar número"):
+                conn = banco.conectar_banco()
+                cursor = conn.cursor()
+                cursor.execute(
+                    "UPDATE pacientes SET whatsapp_responsavel = ? WHERE id_paciente = ?",
+                    (novo_whatsapp.strip() if novo_whatsapp else None, id_p),
+                )
+                conn.commit()
+                conn.close()
+                st.success("Número salvo!")
+                st.rerun()
+
+            st.divider()
             st.markdown("#### ✍️ Evolução e Parecer Clínico Unificado")
             texto_evolucao = st.text_area(
                 "Notas médicas:",
@@ -1117,6 +1191,13 @@ with menu_principal[2]:
             "Tratamentos Clínicos Ativos:",
             placeholder="Ex: Nutricionista, Fisioterapia, Cardiologista",
         )
+        whatsapp_responsavel = st.text_input(
+            "WhatsApp para receber os resultados (com DDD):",
+            placeholder="Ex: 13981221334",
+            help="O botão 'Compartilhar no WhatsApp' de cada avaliação vai abrir "
+            "direto na conversa com esse número. Deixe em branco se preferir "
+            "escolher o contato manualmente toda vez.",
+        )
 
         if st.form_submit_button("Salvar Registro Clínico") and nome:
             conn = banco.conectar_banco()
@@ -1125,8 +1206,8 @@ with menu_principal[2]:
             # 🌟 AGORA SALVANDO OS DADOS REAIS RECOLHIDOS NO FORMULÁRIO NATIVO
             cursor.execute(
                 """
-                INSERT INTO pacientes (id_profissional, nome, idade, sexo, endereco, contato_emergencia, tratamentos) 
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pacientes (id_profissional, nome, idade, sexo, endereco, contato_emergencia, tratamentos, whatsapp_responsavel) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     id_prof,
@@ -1136,6 +1217,7 @@ with menu_principal[2]:
                     endereco,
                     contato_emergencia if contato_emergencia else "Não Informado",
                     tratamentos_ativos if tratamentos_ativos else "Nenhum",
+                    whatsapp_responsavel.strip() if whatsapp_responsavel else None,
                 ),
             )
             conn.commit()
@@ -1145,150 +1227,31 @@ with menu_principal[2]:
 
 # Conteúdo da nova aba (aba 4)
 with menu_principal[3]:
-    st.markdown("### 📬 Fale com o Desenvolvedor")
-    st.write("Relate erros ou envie sugestões para melhorar o GerontoData.")
-
-    with st.form("form_contato_v1"):
-        assunto = st.selectbox(
-            "Assunto:", ["Relato de Erro", "Sugestão de Melhoria", "Dúvida", "Outro"]
-        )
-        mensagem = st.text_area("Descreva aqui sua mensagem:")
-        submit = st.form_submit_button("Enviar Feedback")
-
-        if submit:
-            st.success("Obrigado pelo seu feedback! Ele foi registrado com sucesso.")
-
-# --- ABA 5: INTEGRAÇÕES (N8N / WHATSAPP) ---
-# Esta aba tinha sumido do menu quando o código de navegação antigo foi
-# removido - sem ela não existia como colar/editar a URL do webhook do n8n.
-with menu_principal[4]:
-    renderizar_configuracoes_integracao(clinica_id_prof)
-
-
-# =====================================================================
-# 📬 MOTOR 1/4: SISTEMA DE FEEDBACK INTERNO [BETA 1.0]
-# =====================================================================
-
-
-def criar_tabela_feedback():
-    """Garante que a tabela de feedbacks existe no banco SQLite"""
-    try:
-        conn = sqlite3.connect("gerontodata.db")
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS feedbacks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT,
-                tipo TEXT,
-                mensagem TEXT,
-                data TEXT
-            )
-        """)
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        st.error(f"Erro ao inicializar tabela de feedback: {e}")
-
-
-def renderizar_aba_feedback(usuario_email):
-    """Desenha a interface visual do formulário de feedback"""
-    st.markdown("### 📬 Central de Feedback & Suporte [Beta]")
-    st.write(
-        "Sua opinião é fundamental para evoluirmos a plataforma. Use o espaço abaixo para relatar bugs, sugerir melhorias ou fazer críticas."
-    )
-
-    with st.form("form_suporte_feedback", clear_on_submit=True):
-        tipo_mensagem = st.selectbox(
-            "Tipo de Ocorrência",
-            [
-                "Sugestão de Melhoria",
-                "Relatar um Bug / Erro",
-                "Dúvida Técnica",
-                "Crítica / Elogio",
-            ],
-        )
-
-        detalhes = st.text_area(
-            "Descrição detalhada:",
-            placeholder="Conte-nos detalhadamente o que aconteceu ou o que gostaria de ver no sistema...",
-        )
-
-        botao_enviar = st.form_submit_button("Enviar Mensagem")
-
-        if botao_enviar:
-            if detalhes.strip() == "":
-                st.error("❌ Por favor, descreva o seu feedback antes de enviar.")
-            else:
-                try:
-                    conn = sqlite3.connect("gerontodata.db")
-                    cursor = conn.cursor()
-                    data_atual = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
-
-                    cursor.execute(
-                        "INSERT INTO feedbacks (email, tipo, mensagem, data) VALUES (?, ?, ?, ?)",
-                        (usuario_email, tipo_mensagem, detalhes, data_atual),
-                    )
-                    conn.commit()
-                    conn.close()
-
-                    st.success(
-                        "✅ Ocorrência registrada com sucesso! Nossa equipe técnica analisará o seu caso."
-                    )
-                except Exception as e:
-                    st.error(f"Erro crítico ao salvar no banco: {e}")
-
-
-# Executa a criação da tabela logo na leitura do script
-criar_tabela_feedback()
-
-# =====================================================================
-# 🧭 NAVEGAÇÃO DO SISTEMA ATUALIZADA
-# =====================================================================
-
-menu_opcoes = [
-    "Painel Principal",
-    "Meus Pacientes",
-    "Realizar Escalas",
-    "Central de Feedback",
-]
-escolha_menu = st.sidebar.selectbox("Navegação do Sistema", menu_opcoes)
-
-if escolha_menu == "Painel Principal":
-    st.write("Sua função do Dashboard / Painel Principal aqui")
-
-elif escolha_menu == "Meus Pacientes":
-    st.write("Sua função de listagem de pacientes aqui")
-
-elif escolha_menu == "Realizar Escalas":
-    st.write("Sua função que chama o arquivo escalas.py aqui")
-
-# 3. ENCAIXE CIRÚRGICO DA NOVA TELA COM PAINEL ADM EMBUTIDO:
-elif escolha_menu == "Central de Feedback":
-    email_sessao = st.session_state.get("email", "usuario_beta@gerontodata.com")
-
-    # 1. Desenha o formulário para o usuário enviar o feedback
+    email_sessao = st.session_state.get("email", dados_prof_logado.get("nome", ""))
     renderizar_aba_feedback(email_sessao)
 
-    # 2. O painel com TODOS os feedbacks só aparece para quem é admin.
-    #    Antes disso era "if True:" fora do elif -> qualquer profissional logado
-    #    via os feedbacks de todo mundo, mesmo de outras clínicas.
+    # O painel com TODOS os feedbacks só aparece para quem é admin.
     if dados_prof_logado.get("cargo") == "admin":
         st.markdown("---")
         st.markdown("### 👑 Painel do Administrador - Feedbacks Recebidos")
-
         try:
             conn = banco.conectar_banco()
             df_feedbacks = pd.read_sql_query(
                 "SELECT * FROM feedbacks ORDER BY id DESC", conn
             )
             conn.close()
-
             if not df_feedbacks.empty:
                 st.dataframe(df_feedbacks, use_container_width=True)
             else:
                 st.info("Nenhum feedback registrado até o momento.")
         except Exception as e:
             st.error(f"Erro ao carregar painel admin: {e}")
+
+# --- ABA 5: INTEGRAÇÕES (N8N / WHATSAPP) ---
+# Esta aba tinha sumido do menu quando o código de navegação antigo foi
+# removido - sem ela não existia como colar/editar a URL do webhook do n8n.
+with menu_principal[4]:
+    renderizar_configuracoes_integracao(clinica_id_prof)
 
 
 def verificar_acesso(nivel_requerido):

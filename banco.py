@@ -121,6 +121,14 @@ def criar_tabelas():
             )
         """)
 
+        # Migração: adiciona a coluna do WhatsApp de destino em bancos que já
+        # existiam antes dela (CREATE TABLE IF NOT EXISTS não altera tabelas
+        # já criadas). ALTER TABLE falha se a coluna já existir - ignoramos.
+        try:
+            cursor.execute("ALTER TABLE pacientes ADD COLUMN whatsapp_responsavel TEXT")
+        except sqlite3.OperationalError:
+            pass
+
         # 4. Tabela de Avaliações
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS avaliacoes (
