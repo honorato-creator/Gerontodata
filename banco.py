@@ -13,6 +13,42 @@ def conectar_banco():
     return sqlite3.connect(DB_PATH, timeout=30)
 
 
+# --- 🏥 GARANTE VÍNCULO COM UMA CLÍNICA ---
+def garantir_clinica_do_profissional(id_profissional):
+    """
+    Todo o fluxo de integração com o n8n (webhook do WhatsApp) depende do
+    profissional estar vinculado a uma clinica_id. Profissionais cadastrados
+    sem essa informação (clinica_id NULL) nunca disparavam o webhook, mesmo
+    com a URL configurada, porque o sistema não sabia em qual clínica buscar.
+    Esta função cria uma clínica individual para o profissional na primeira
+    vez que for necessário, e devolve o clinica_id (já existente ou recém-criado).
+    """
+    with conectar_banco() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT clinica_id, nome FROM profissionais WHERE id_profissional = ?",
+            (id_profissional,),
+        )
+        linha = cursor.fetchone()
+        if not linha:
+            return None
+
+        clinica_id, nome_prof = linha
+        if clinica_id:
+            return clinica_id
+
+        cursor.execute(
+            "INSERT INTO clinicas (nome) VALUES (?)", (f"Clínica de {nome_prof}",)
+        )
+        nova_clinica_id = cursor.lastrowid
+        cursor.execute(
+            "UPDATE profissionais SET clinica_id = ? WHERE id_profissional = ?",
+            (nova_clinica_id, id_profissional),
+        )
+        conn.commit()
+        return nova_clinica_id
+
+
 # --- 🔐 SENHAS: hash + salt (nunca gravar senha em texto puro) ---
 def _hash_senha(senha_texto_puro):
     salt = secrets.token_hex(16)
@@ -26,7 +62,9 @@ def _verificar_senha(senha_texto_puro, senha_armazenada):
     if not senha_armazenada or "$" not in senha_armazenada:
         return hmac.compare_digest(senha_texto_puro, senha_armazenada or "")
     salt, hash_salvo = senha_armazenada.split("$", 1)
-    hash_calculado = hashlib.sha256((salt + senha_texto_puro).encode("utf-8")).hexdigest()
+    hash_calculado = hashlib.sha256(
+        (salt + senha_texto_puro).encode("utf-8")
+    ).hexdigest()
     return hmac.compare_digest(hash_calculado, hash_salvo)
 
 
@@ -276,7 +314,13 @@ def salvar_evolucao_paciente(id_paciente, texto_evolucao):
 
 # --- 📋 AVALIAÇÕES (usada por salvar_avaliacao_com_webhook em gerontodata.py) ---
 def salvar_avaliacao(
-    paciente_id, profissional_id, clinica_id, tipo_escala, pontuacao, interpretacao, respostas
+    paciente_id,
+    profissional_id,
+    clinica_id,
+    tipo_escala,
+    pontuacao,
+    interpretacao,
+    respostas,
 ):
     """
     Também estava faltando: gerontodata.py chama banco.salvar_avaliacao com essa
