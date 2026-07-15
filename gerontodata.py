@@ -453,6 +453,23 @@ def gerar_pdf_historico(
 
         pdf.set_xy(x_inicial, y_inicial + altura_total)
 
+    def texto_multilinha(texto, altura_linha=4.5):
+        """
+        Substitui multi_cell() nativo pra parágrafos de texto livre (fora de
+        tabela). O multi_cell do fpdf2 estava lançando FPDFException ("Not
+        enough horizontal space...") em produção nessa versão/ambiente -
+        usar a mesma técnica manual e estável da tabela evita depender
+        daquele código interno.
+        """
+        largura_disponivel = pdf.w - pdf.l_margin - pdf.r_margin
+        linhas = quebrar_texto(texto, largura_disponivel)
+        for linha in linhas:
+            if pdf.get_y() + altura_linha > pdf.page_break_trigger:
+                pdf.add_page()
+            pdf.set_x(pdf.l_margin)
+            pdf.cell(largura_disponivel, altura_linha, linha, border=0, align="L")
+            pdf.ln(altura_linha)
+
     # =====================================================================
     # Cabeçalho — tema preto/cinza, sem laranja
     # =====================================================================
@@ -610,11 +627,11 @@ def gerar_pdf_historico(
 
             pdf.set_font("Helvetica", "", 9)
             pdf.set_text_color(20, 20, 20)
-            pdf.multi_cell(0, 4.5, p(ref["corte"]))
+            texto_multilinha(p(ref["corte"]))
 
             pdf.set_font("Helvetica", "I", 8)
             pdf.set_text_color(110, 110, 110)
-            pdf.multi_cell(0, 4.5, p(f"Fonte: {ref['citacao']}"))
+            texto_multilinha(p(f"Fonte: {ref['citacao']}"))
             pdf.ln(2)
 
     # =====================================================================
@@ -630,21 +647,22 @@ def gerar_pdf_historico(
     ev_texto = dados_paciente.get("evolucao_clinica", "").strip()
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(20, 20, 20)
-    pdf.multi_cell(0, 5, p(ev_texto if ev_texto else "Sem parecer registrado."))
+    texto_multilinha(
+        p(ev_texto if ev_texto else "Sem parecer registrado."), altura_linha=5
+    )
 
     # Aviso de responsabilidade — os pontos de corte são referência geral da
     # literatura, não substituem o julgamento clínico do profissional.
     pdf.ln(3)
     pdf.set_font("Helvetica", "I", 7.5)
     pdf.set_text_color(140, 140, 140)
-    pdf.multi_cell(
-        0,
-        4,
+    texto_multilinha(
         p(
             "Os pontos de corte da seção 3 são referências gerais da literatura "
             "científica e não substituem o julgamento clínico individualizado do "
             "profissional responsável pela avaliação."
         ),
+        altura_linha=4,
     )
 
     # Rodapé com numeração de página
