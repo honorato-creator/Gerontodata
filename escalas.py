@@ -2,8 +2,18 @@ import streamlit as st
 import sqlite3
 import ast
 import datetime
+import urllib.parse
 import requests  # Certifique-se de que importou o requests aqui!
 from streamlit_drawable_canvas import st_canvas
+
+
+def gerar_link_whatsapp(texto):
+    """
+    Gera um link 'wa.me' que abre o WhatsApp (app ou web) já com a mensagem
+    pronta. Diferente do webhook do n8n, isso não exige nenhuma configuração
+    externa - funciona pra qualquer profissional, na hora.
+    """
+    return "https://wa.me/?text=" + urllib.parse.quote(texto)
 
 
 def disparar_webhook_n8n(tipo_teste, detalhes, id_paciente, id_profissional):
@@ -69,10 +79,6 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
                 "obs_clinica_atual", ""
             ).strip()
 
-        # Selo do Hokage
-        dict_detalhes["selo_desenvolvedor"] = (
-            "K.Honorato - O Hokage da Vila Oculta do Código"
-        )
         detalhes_finais = str(dict_detalhes)
 
         conn = sqlite3.connect("gerontodata.db")
@@ -84,8 +90,22 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
         conn.commit()
         conn.close()
 
-        # Dispara a automação buscando a URL do banco
+        # Integração avançada e OPCIONAL com n8n (só dispara se a clínica
+        # tiver configurado uma URL de webhook na aba Integrações).
         disparar_webhook_n8n(tipo_teste, dict_detalhes, id_paciente, id_profissional)
+
+        # Compartilhamento simples via WhatsApp - não exige nenhuma
+        # configuração, funciona pra qualquer profissional na hora.
+        resumo = dict_detalhes.get("resultado", "")
+        pontos = dict_detalhes.get("pontuacao", "")
+        texto_whats = (
+            f"*GerontoData - {tipo_teste}*\nPontuação: {pontos}\nResultado: {resumo}"
+        )
+        st.link_button(
+            "📲 Compartilhar resultado no WhatsApp",
+            gerar_link_whatsapp(texto_whats),
+            use_container_width=True,
+        )
 
         return True
     except Exception as e:
