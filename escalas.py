@@ -114,15 +114,21 @@ def salvar_avaliacao(id_paciente, id_profissional, tipo_teste, detalhes):
         # configuração, funciona pra qualquer profissional na hora.
         conn = sqlite3.connect("gerontodata.db")
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
-            (id_paciente,),
-        )
-        linha_paciente = cursor.fetchone()
+        numero_destino = None
+        try:
+            cursor.execute(
+                "SELECT whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
+                (id_paciente,),
+            )
+            linha_paciente = cursor.fetchone()
+            numero_destino = (
+                linha_paciente[0] if linha_paciente and linha_paciente[0] else None
+            )
+        except sqlite3.OperationalError:
+            # Coluna nova ainda não disponível nesse banco por algum motivo -
+            # segue sem quebrar o salvamento da avaliação.
+            pass
         conn.close()
-        numero_destino = (
-            linha_paciente[0] if linha_paciente and linha_paciente[0] else None
-        )
 
         resumo = dict_detalhes.get("resultado", "")
         pontos = dict_detalhes.get("pontuacao", "")

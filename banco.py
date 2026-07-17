@@ -37,9 +37,7 @@ def garantir_clinica_do_profissional(id_profissional):
         if clinica_id:
             return clinica_id
 
-        cursor.execute(
-            "INSERT INTO clinicas (nome) VALUES (?)", (f"Clínica de {nome_prof}",)
-        )
+        cursor.execute("INSERT INTO clinicas (nome) VALUES (?)", (f"Clínica de {nome_prof}",))
         nova_clinica_id = cursor.lastrowid
         cursor.execute(
             "UPDATE profissionais SET clinica_id = ? WHERE id_profissional = ?",
@@ -62,9 +60,7 @@ def _verificar_senha(senha_texto_puro, senha_armazenada):
     if not senha_armazenada or "$" not in senha_armazenada:
         return hmac.compare_digest(senha_texto_puro, senha_armazenada or "")
     salt, hash_salvo = senha_armazenada.split("$", 1)
-    hash_calculado = hashlib.sha256(
-        (salt + senha_texto_puro).encode("utf-8")
-    ).hexdigest()
+    hash_calculado = hashlib.sha256((salt + senha_texto_puro).encode("utf-8")).hexdigest()
     return hmac.compare_digest(hash_calculado, hash_salvo)
 
 
@@ -123,11 +119,14 @@ def criar_tabelas():
 
         # Migração: adiciona a coluna do WhatsApp de destino em bancos que já
         # existiam antes dela (CREATE TABLE IF NOT EXISTS não altera tabelas
-        # já criadas). ALTER TABLE falha se a coluna já existir - ignoramos.
+        # já criadas). Só ignoramos o erro esperado (coluna já existe) -
+        # qualquer outro problema real (ex: banco somente-leitura) agora
+        # aparece de verdade em vez de ficar escondido em silêncio.
         try:
             cursor.execute("ALTER TABLE pacientes ADD COLUMN whatsapp_responsavel TEXT")
-        except sqlite3.OperationalError:
-            pass
+        except sqlite3.OperationalError as e:
+            if "duplicate column" not in str(e).lower():
+                raise
 
         # 4. Tabela de Avaliações
         cursor.execute("""
@@ -322,13 +321,7 @@ def salvar_evolucao_paciente(id_paciente, texto_evolucao):
 
 # --- 📋 AVALIAÇÕES (usada por salvar_avaliacao_com_webhook em gerontodata.py) ---
 def salvar_avaliacao(
-    paciente_id,
-    profissional_id,
-    clinica_id,
-    tipo_escala,
-    pontuacao,
-    interpretacao,
-    respostas,
+    paciente_id, profissional_id, clinica_id, tipo_escala, pontuacao, interpretacao, respostas
 ):
     """
     Também estava faltando: gerontodata.py chama banco.salvar_avaliacao com essa

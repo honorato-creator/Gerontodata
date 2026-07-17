@@ -1046,11 +1046,21 @@ with menu_principal[1]:
 
         conn = banco.conectar_banco()
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT endereco, contato_emergencia, tratamentos, evolucao_clinica, whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
-            (id_p,),
-        )
-        dados_banco = cursor.fetchone()
+        try:
+            cursor.execute(
+                "SELECT endereco, contato_emergencia, tratamentos, evolucao_clinica, whatsapp_responsavel FROM pacientes WHERE id_paciente = ?",
+                (id_p,),
+            )
+            dados_banco = cursor.fetchone()
+        except sqlite3.OperationalError:
+            # Coluna nova ainda não disponível nesse banco por algum motivo -
+            # segue sem quebrar o app, só sem o campo de WhatsApp por ora.
+            cursor.execute(
+                "SELECT endereco, contato_emergencia, tratamentos, evolucao_clinica FROM pacientes WHERE id_paciente = ?",
+                (id_p,),
+            )
+            linha_sem_whats = cursor.fetchone()
+            dados_banco = (*linha_sem_whats, None) if linha_sem_whats else None
         conn.close()
 
         dados_paciente = {}
@@ -1130,14 +1140,32 @@ with menu_principal[1]:
             if st.button("💾 Salvar número"):
                 conn = banco.conectar_banco()
                 cursor = conn.cursor()
-                cursor.execute(
-                    "UPDATE pacientes SET whatsapp_responsavel = ? WHERE id_paciente = ?",
-                    (novo_whatsapp.strip() if novo_whatsapp else None, id_p),
-                )
-                conn.commit()
-                conn.close()
-                st.success("Número salvo!")
-                st.rerun()
+                try:
+                    cursor.execute(
+                        "UPDATE pacientes SET whatsapp_responsavel = ? WHERE id_paciente = ?",
+                        (novo_whatsapp.strip() if novo_whatsapp else None, id_p),
+                    )
+                    conn.commit()
+                    conn.close()
+                    st.success("Número salvo!")
+                    st.rerun()
+                except sqlite3.OperationalError:
+                    # Última tentativa: cria a coluna na hora e tenta de novo
+                    try:
+                        cursor.execute(
+                            "ALTER TABLE pacientes ADD COLUMN whatsapp_responsavel TEXT"
+                        )
+                        cursor.execute(
+                            "UPDATE pacientes SET whatsapp_responsavel = ? WHERE id_paciente = ?",
+                            (novo_whatsapp.strip() if novo_whatsapp else None, id_p),
+                        )
+                        conn.commit()
+                        conn.close()
+                        st.success("Número salvo!")
+                        st.rerun()
+                    except sqlite3.OperationalError as e:
+                        conn.close()
+                        st.error(f"Não foi possível salvar o número agora: {e}")
 
             st.divider()
             st.markdown("#### ✍️ Evolução e Parecer Clínico Unificado")
@@ -1203,23 +1231,38 @@ with menu_principal[2]:
             conn = banco.conectar_banco()
             cursor = conn.cursor()
 
-            # 🌟 AGORA SALVANDO OS DADOS REAIS RECOLHIDOS NO FORMULÁRIO NATIVO
-            cursor.execute(
-                """
-                INSERT INTO pacientes (id_profissional, nome, idade, sexo, endereco, contato_emergencia, tratamentos, whatsapp_responsavel) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    id_prof,
-                    nome,
-                    id_cron,
-                    sexo,
-                    endereco,
-                    contato_emergencia if contato_emergencia else "Não Informado",
-                    tratamentos_ativos if tratamentos_ativos else "Nenhum",
-                    whatsapp_responsavel.strip() if whatsapp_responsavel else None,
-                ),
+            valores_paciente = (
+                id_prof,
+                nome,
+                id_cron,
+                sexo,
+                endereco,
+                contato_emergencia if contato_emergencia else "Não Informado",
+                tratamentos_ativos if tratamentos_ativos else "Nenhum",
+                whatsapp_responsavel.strip() if whatsapp_responsavel else None,
             )
+
+            # 🌟 AGORA SALVANDO OS DADOS REAIS RECOLHIDOS NO FORMULÁRIO NATIVO
+            try:
+                cursor.execute(
+                    """
+                    INSERT INTO pacientes (id_profissional, nome, idade, sexo, endereco, contato_emergencia, tratamentos, whatsapp_responsavel) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    valores_paciente,
+                )
+            except sqlite3.OperationalError:
+                # Última tentativa: cria a coluna na hora e tenta de novo
+                cursor.execute(
+                    "ALTER TABLE pacientes ADD COLUMN whatsapp_responsavel TEXT"
+                )
+                cursor.execute(
+                    """
+                    INSERT INTO pacientes (id_profissional, nome, idade, sexo, endereco, contato_emergencia, tratamentos, whatsapp_responsavel) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    valores_paciente,
+                )
             conn.commit()
             conn.close()
             st.success("Idoso registrado com sucesso!")
