@@ -193,7 +193,7 @@ def renderizar_aba_feedback(usuario_email):
 # Configuração da identidade do App
 st.set_page_config(
     page_title="GerontoData Beta 1.0",
-    page_icon="https://raw.githubusercontent.com/uicai/storage/main/logo_geronto_clean.png",  # Link direto super leve!
+    page_icon="💚",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
@@ -211,6 +211,9 @@ banco.criar_tabelas()
 #
 #   --cor-primaria:      #1F4B44  (verde-petróleo escuro - marca, títulos, botões)
 #   --cor-primaria-hover:#163832  (mais escuro - hover/pressed)
+#   --cor-acento:        #C1622A  (laranja-terracota - cor clássica da gerontologia,
+#                                  usada em detalhes/logo, nunca em botão sólido
+#                                  com texto branco, pra não arriscar contraste)
 #   --cor-destaque-dado: #4C7A6D  (verde-sálvia - links, números secundários)
 #   --cor-fundo:         #F3F5F3  (cinza-esverdeado bem claro - fundo geral)
 #   --cor-superficie:    #FFFFFF  (cards, inputs)
@@ -228,14 +231,14 @@ banco.criar_tabelas()
 #                                    reforça precisão/leitura de dado)
 st.markdown(
     """
-    <link rel="icon" href="https://raw.githubusercontent.com/uicai/storage/main/logo_geronto_clean.png" type="image/png">
-    <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/uicai/storage/main/logo_geronto_clean.png">
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgo8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjMUY0QjQ0Ii8+CjxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iIzRDN0E2RCIvPgo8L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+CjxjaXJjbGUgY3g9IjMyIiBjeT0iMzIiIHI9IjMwIiBmaWxsPSJ1cmwoI2cpIi8+CjxlbGxpcHNlIGN4PSIzMiIgY3k9IjM0IiByeD0iOSIgcnk9IjciIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMzIiIGN5PSIzMSIgcj0iMS42IiBmaWxsPSIjQzE2MjJBIi8+CjxjaXJjbGUgY3g9IjI4IiBjeT0iMzUiIHI9IjEuNCIgZmlsbD0iI0MxNjIyQSIvPgo8Y2lyY2xlIGN4PSIzNiIgY3k9IjM1IiByPSIxLjQiIGZpbGw9IiNDMTYyMkEiLz4KPGNpcmNsZSBjeD0iMzIiIGN5PSIzOCIgcj0iMS40IiBmaWxsPSIjQzE2MjJBIi8+CjxjaXJjbGUgY3g9IjMyIiBjeT0iMTkiIHI9IjQiIGZpbGw9IiNGRkZGRkYiLz4KPGNpcmNsZSBjeD0iMzAuNiIgY3k9IjE4LjMiIHI9IjAuOCIgZmlsbD0iIzFGNEI0NCIvPgo8Y2lyY2xlIGN4PSIzMy40IiBjeT0iMTguMyIgcj0iMC44IiBmaWxsPSIjMUY0QjQ0Ii8+CjxlbGxpcHNlIGN4PSIyMCIgY3k9IjI3IiByeD0iMy4yIiByeT0iMi4yIiBmaWxsPSIjRkZGRkZGIiB0cmFuc2Zvcm09InJvdGF0ZSgtMzAgMjAgMjcpIi8+CjxlbGxpcHNlIGN4PSI0NCIgY3k9IjI3IiByeD0iMy4yIiByeT0iMi4yIiBmaWxsPSIjRkZGRkZGIiB0cmFuc2Zvcm09InJvdGF0ZSgzMCA0NCAyNykiLz4KPGVsbGlwc2UgY3g9IjIxIiBjeT0iNDIiIHJ4PSIzLjIiIHJ5PSIyLjIiIGZpbGw9IiNGRkZGRkYiIHRyYW5zZm9ybT0icm90YXRlKDMwIDIxIDQyKSIvPgo8ZWxsaXBzZSBjeD0iNDMiIGN5PSI0MiIgcng9IjMuMiIgcnk9IjIuMiIgZmlsbD0iI0ZGRkZGRiIgdHJhbnNmb3JtPSJyb3RhdGUoLTMwIDQzIDQyKSIvPgo8L3N2Zz4K" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
     <style>
         :root {
             --cor-primaria: #1F4B44;
             --cor-primaria-hover: #163832;
+            --cor-acento: #C1622A;
             --cor-destaque-dado: #4C7A6D;
             --cor-fundo: #F3F5F3;
             --cor-superficie: #FFFFFF;
@@ -252,8 +255,12 @@ st.markdown(
             display: none !important;
         }
 
-        /* 2. FUNDO E TEXTO BASE */
-        .stApp, [data-testid="stAppViewContainer"], [data-testid="stMainBlockContainer"], [data-testid="stForm"] {
+        /* 2. FUNDO E TEXTO BASE - gradiente sutil, não plano */
+        .stApp, [data-testid="stAppViewContainer"] {
+            background: linear-gradient(160deg, #EEF3F0 0%, #F3F5F3 22%, #F6F7F5 55%, #EFF4F1 100%) !important;
+            color: var(--cor-texto) !important;
+        }
+        [data-testid="stMainBlockContainer"], [data-testid="stForm"] {
             background-color: var(--cor-fundo) !important;
             color: var(--cor-texto) !important;
         }
@@ -353,27 +360,50 @@ st.markdown(
         }
 
         button, [data-testid="stFormSubmitButton"] button {
-            background-color: var(--cor-primaria) !important;
+            background: linear-gradient(135deg, #266157 0%, #1F4B44 55%, #163832 100%) !important;
             color: #FFFFFF !important;
-            border-radius: 8px !important;
+            border-radius: 10px !important;
             border: none !important;
             font-family: "IBM Plex Sans", sans-serif !important;
             font-weight: 600 !important;
-            transition: background-color 0.15s ease !important;
+            box-shadow: 0 2px 8px rgba(31, 75, 68, 0.28) !important;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.15s ease !important;
         }
         button:hover, [data-testid="stFormSubmitButton"] button:hover {
-            background-color: var(--cor-primaria-hover) !important;
+            background: linear-gradient(135deg, #2E7267 0%, #235347 55%, #163832 100%) !important;
+            box-shadow: 0 5px 14px rgba(31, 75, 68, 0.38) !important;
+            transform: translateY(-1px) !important;
+        }
+        button:active, [data-testid="stFormSubmitButton"] button:active {
+            transform: translateY(0) !important;
+            box-shadow: 0 2px 6px rgba(31, 75, 68, 0.3) !important;
         }
 
         /* 6. CARDS */
         .medical-card {
-            background-color: var(--cor-superficie) !important;
+            position: relative !important;
+            background: linear-gradient(180deg, #FFFFFF 0%, #FCFDFC 100%) !important;
             border: 1px solid var(--cor-borda) !important;
-            border-left: 4px solid var(--cor-primaria) !important;
-            border-radius: 10px !important;
-            padding: 16px !important;
+            border-left: none !important;
+            border-radius: 12px !important;
+            padding: 16px 16px 16px 20px !important;
             margin-bottom: 12px !important;
-            box-shadow: 0 1px 3px rgba(27, 35, 31, 0.06) !important;
+            box-shadow: 0 2px 10px rgba(27, 35, 31, 0.07) !important;
+            transition: box-shadow 0.15s ease, transform 0.15s ease !important;
+            overflow: hidden !important;
+        }
+        .medical-card::before {
+            content: "" !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            width: 5px !important;
+            background: linear-gradient(180deg, #2E7267, #1F4B44) !important;
+        }
+        .medical-card:hover {
+            box-shadow: 0 6px 18px rgba(27, 35, 31, 0.12) !important;
+            transform: translateY(-1px) !important;
         }
 
         /* 7. SELOS DE RISCO CLÍNICO (usados junto com badge_risco()) */
@@ -390,18 +420,29 @@ st.markdown(
         .selo-risco.medio  { background-color: #FBEBDA; color: var(--cor-risco-medio); }
         .selo-risco.alto   { background-color: #F6E1E1; color: var(--cor-risco-alto); }
 
-        /* 8. ABAS */
+        /* 8. ABAS — estilo "segmented control" em vez de linha simples */
+        [data-baseweb="tab-list"] {
+            background-color: #E9EFEB !important;
+            border-radius: 999px !important;
+            padding: 4px !important;
+            gap: 4px !important;
+        }
         button[data-baseweb="tab"] {
             background-color: transparent !important;
             color: var(--cor-texto-suave) !important;
             font-family: "IBM Plex Sans", sans-serif !important;
-            font-size: 15px !important;
+            font-size: 14px !important;
             font-weight: 600 !important;
             border: none !important;
+            border-radius: 999px !important;
+            box-shadow: none !important;
+            transition: background 0.15s ease, color 0.15s ease !important;
         }
         button[aria-selected="true"] {
-            color: var(--cor-primaria) !important;
-            border-bottom: 3px solid var(--cor-primaria) !important;
+            background: linear-gradient(135deg, #266157 0%, #1F4B44 100%) !important;
+            color: #FFFFFF !important;
+            border-bottom: none !important;
+            box-shadow: 0 2px 6px rgba(31, 75, 68, 0.28) !important;
         }
     </style>
     """,
@@ -757,11 +798,44 @@ if "id_profissional" not in st.session_state:
 
 if st.session_state.id_profissional is None:
     st.markdown(
-        "<h1 style='text-align: center; color: #1F4B44 !important; font-family: \"Source Serif 4\", Georgia, serif !important; font-size: 36px; margin-top: 40px;'>🌱 GerontoData Beta1.0</h1>",
-        unsafe_allow_html=True,
-    )
-    st.markdown(
-        "<p style='text-align: center; font-weight: bold; margin-bottom: 30px;'>Portal de Avaliação Multidisciplinar do Idoso</p>",
+        """
+        <div style='text-align:center; padding: 34px 20px 26px 20px;
+                    background: linear-gradient(135deg, #E6EFE9 0%, #F2F6F3 55%, #E9F1EC 100%);
+                    border-radius: 20px; margin: 24px auto 26px auto; max-width: 540px;
+                    box-shadow: 0 6px 24px rgba(31, 75, 68, 0.10);'>
+            <div style='display:inline-block; padding: 6px; border-radius: 50%;
+                        background: linear-gradient(135deg, #C1622A 0%, #E0A15C 100%);
+                        margin-bottom: 10px;'>
+                <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" width="52" height="52" style="display:block;">
+                    <defs>
+                        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                            <stop offset="0%" stop-color="#1F4B44"/>
+                            <stop offset="100%" stop-color="#4C7A6D"/>
+                        </linearGradient>
+                    </defs>
+                    <circle cx="32" cy="32" r="30" fill="url(#logoGrad)"/>
+                    <ellipse cx="32" cy="34" rx="9" ry="7" fill="#FFFFFF"/>
+                    <circle cx="32" cy="31" r="1.6" fill="#C1622A"/>
+                    <circle cx="28" cy="35" r="1.4" fill="#C1622A"/>
+                    <circle cx="36" cy="35" r="1.4" fill="#C1622A"/>
+                    <circle cx="32" cy="38" r="1.4" fill="#C1622A"/>
+                    <circle cx="32" cy="19" r="4" fill="#FFFFFF"/>
+                    <circle cx="30.6" cy="18.3" r="0.8" fill="#1F4B44"/>
+                    <circle cx="33.4" cy="18.3" r="0.8" fill="#1F4B44"/>
+                    <ellipse cx="20" cy="27" rx="3.2" ry="2.2" fill="#FFFFFF" transform="rotate(-30 20 27)"/>
+                    <ellipse cx="44" cy="27" rx="3.2" ry="2.2" fill="#FFFFFF" transform="rotate(30 44 27)"/>
+                    <ellipse cx="21" cy="42" rx="3.2" ry="2.2" fill="#FFFFFF" transform="rotate(30 21 42)"/>
+                    <ellipse cx="43" cy="42" rx="3.2" ry="2.2" fill="#FFFFFF" transform="rotate(-30 43 42)"/>
+                </svg>
+            </div>
+            <h1 style='color: #1F4B44; font-family: "Source Serif 4", Georgia, serif; font-size: 34px; margin: 4px 0 2px 0; font-weight: 700;'>
+                GerontoData
+            </h1>
+            <p style='color: #C1622A; font-family: "IBM Plex Sans", sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.03em; text-transform: uppercase; margin: 0;'>
+                Beta 1.0 · Portal de Avaliação Multidisciplinar do Idoso
+            </p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
